@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../utils/colors.dart';
 import '../utils/avatar_utils.dart';
+import 'connect_screen.dart';
+import 'recents_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -19,19 +22,25 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.white, // Or a very light pink/off-white depending on design
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-               _buildHeader(),
-               _buildGreeting(),
-               _buildFavoriteSpeakers(),
-               _buildDailyRewards(),
-               _buildExploreRooms(),
-               const SizedBox(height: 80), // Space for bottom nav
-            ],
-          ),
-        ),
+        child: _selectedIndex == 1 
+          ? const ConnectScreen()
+          : _selectedIndex == 2
+              ? const RecentsScreen()
+              : _selectedIndex == 3
+                  ? ProfileScreen(userName: widget.userName)
+                  : SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                           _buildHeader(),
+                           _buildGreeting(),
+                           _buildFavoriteSpeakers(),
+                           _buildDailyRewards(),
+                           _buildExploreRooms(),
+                           const SizedBox(height: 80), // Space for bottom nav
+                        ],
+                      ),
+                    ),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
       extendBody: true, // For floating effect if needed, but standard is fine
