@@ -9,7 +9,7 @@ class RoleSelectionCard extends StatelessWidget {
   final List<Color> iconGradient;
 
   const RoleSelectionCard({
-    super.key,
+    super.key,                  
     required this.icon,
     required this.title,
     required this.description,

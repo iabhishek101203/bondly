@@ -4,6 +4,9 @@ import '../utils/avatar_utils.dart';
 import 'connect_screen.dart';
 import 'recents_screen.dart';
 import 'profile_screen.dart';
+import '../models/user_model.dart';
+import '../models/room_model.dart';
+import '../services/firestore_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -16,6 +19,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  final FirestoreService _firestoreService = FirestoreService();
+  final String _mockUid = 'test-user-123'; // Mock UID for testing user-specific data
 
   @override
   Widget build(BuildContext context) {
@@ -28,18 +33,24 @@ class _HomeScreenState extends State<HomeScreen> {
               ? const RecentsScreen()
               : _selectedIndex == 3
                   ? ProfileScreen(userName: widget.userName)
-                  : SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                           _buildHeader(),
-                           _buildGreeting(),
-                           _buildFavoriteSpeakers(),
-                           _buildDailyRewards(),
-                           _buildExploreRooms(),
-                           const SizedBox(height: 80), // Space for bottom nav
-                        ],
-                      ),
+                  : StreamBuilder<UserModel?>(
+                      stream: _firestoreService.getUserStream(_mockUid),
+                      builder: (context, snapshot) {
+                        final currentUser = snapshot.data;
+                        return SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                               _buildHeader(currentUser),
+                               _buildGreeting(),
+                               _buildFavoriteSpeakers(),
+                               _buildDailyRewards(currentUser),
+                               _buildExploreRooms(),
+                               const SizedBox(height: 80), // Space for bottom nav
+                            ],
+                          ),
+                        );
+                      }
                     ),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
@@ -47,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(UserModel? currentUser) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
@@ -68,12 +79,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
-                  children: const [
-                     Icon(Icons.monetization_on, color: Colors.orangeAccent, size: 16),
-                     SizedBox(width: 4),
+                  children: [
+                     const Icon(Icons.monetization_on, color: Colors.orangeAccent, size: 16),
+                     const SizedBox(width: 4),
                      Text(
-                      "100",
-                      style: TextStyle(
+                      "${currentUser?.tokens ?? 0}",
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.brown,
                         fontSize: 14,
@@ -167,24 +178,41 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        SizedBox(
-          height: 260, // Increased height to prevent overflow
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(left: 24, right: 12),
-            children: [
-              _buildSpeakerCard(
-                name: "Sarah Johnson",
-                tags: ["Motivation", "Career"],
-                rating: 4.8,
+        StreamBuilder<List<UserModel>>(
+          stream: _firestoreService.getFavoriteSpeakers(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                height: 100, 
+                child: Center(child: CircularProgressIndicator())
+              );
+            }
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                child: Text("No favorite speakers found yet.", style: TextStyle(color: Colors.grey)),
+              );
+            }
+            final speakers = snapshot.data!;
+            return SizedBox(
+              height: 260, // Increased height to prevent overflow
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(left: 24, right: 12),
+                itemCount: speakers.length,
+                itemBuilder: (context, index) {
+                  final speaker = speakers[index];
+                  // Convert database "streak/tokens" into mock tags just for UI aesthetics
+                  final tags = ["Tokens: ${speaker.tokens}", "Streak: ${speaker.streak}"];
+                  return _buildSpeakerCard(
+                    name: speaker.name.isNotEmpty ? speaker.name : "Unknown Speaker",
+                    tags: tags,
+                    rating: 4.8,
+                  );
+                },
               ),
-              _buildSpeakerCard(
-                name: "David Chen",
-                tags: ["Business", "Finance"],
-                rating: 4.9,
-              ),
-            ],
-          ),
+            );
+          }
         ),
       ],
     );
@@ -326,19 +354,41 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDailyRewards() {
+  Widget _buildDailyRewards(UserModel? currentUser) {
+    // Determine user claim status safely locally or show baseline
+    bool readyToClaim = true;
+    if (currentUser != null && currentUser.lastCallDate != null) {
+      final now = DateTime.now();
+      final last = currentUser.lastCallDate!;
+      if (last.year == now.year && last.month == now.month && last.day == now.day) {
+        readyToClaim = false;
+      }
+    }
+
+    final int displayStreak = currentUser?.streak ?? 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Text(
-            "Daily Rewards",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textDark,
-            ),
+         Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Daily Rewards",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textDark,
+                ),
+              ),
+              if (currentUser != null)
+                Text(
+                  "🔥 $displayStreak day streak",
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+                )
+            ],
           ),
         ),
         SizedBox(
@@ -347,18 +397,43 @@ class _HomeScreenState extends State<HomeScreen> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.only(left: 24, right: 12),
             children: [
-              _buildRewardCard(
-                icon: Icons.phone_in_talk, 
-                title: "First call of the day", 
-                reward: "+10",
-                color: AppColors.primaryPink
+              // Use Gesture Detectors wrapped around cards to trigger services
+              GestureDetector(
+                onTap: readyToClaim ? () async {
+                  try {
+                    await _firestoreService.claimDailyReward(_mockUid);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Rewards Claimed!'), backgroundColor: Colors.green),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                } : () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Come back tomorrow to get your next reward!')),
+                  );
+                },
+                child: AbsorbPointer(
+                  child: _buildRewardCard(
+                    icon: Icons.phone_in_talk, 
+                    title: readyToClaim ? "Claim +10 tokens!" : "Claimed today ✅", 
+                    reward: "+10",
+                    color: readyToClaim ? AppColors.primaryPink : Colors.grey,
+                  ),
+                ),
               ),
               const SizedBox(width: 16),
               _buildRewardCard(
-                icon: Icons.local_fire_department, 
-                title: "3-day streak\nbonus", 
-                reward: "+25",
-                color: Colors.green
+                 icon: Icons.local_fire_department, 
+                 title: "3-day streak\nbonus", 
+                 reward: "+25",
+                 color: (displayStreak >= 3 && displayStreak % 3 == 0) ? Colors.green : Colors.grey.shade400
               ),
             ],
           ),
@@ -435,7 +510,7 @@ class _HomeScreenState extends State<HomeScreen> {
          const Padding(
           padding: EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Text(
-            "Explore Rooms",
+            "Explore Live Rooms",
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -443,37 +518,66 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 140,
-                   decoration: BoxDecoration(
-                     color: const Color(0xFFEA5B7D), // Darker pink
-                     borderRadius: BorderRadius.circular(24),
-                   ),
-                   child: const Center(
-                     child: Icon(Icons.phone_callback, size: 40, color: Colors.white),
-                   ),
-                ),
+        StreamBuilder<List<RoomModel>>(
+          stream: _firestoreService.getLiveRooms(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
+                child: Text("No live rooms at the moment."),
+              );
+            }
+            
+            final rooms = snapshot.data!;
+            // For now, mapping rooms to a horizontal row of colorful boxes
+            // Similar to the static design but dynamic length.
+            return SizedBox(
+              height: 140,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                itemCount: rooms.length,
+                itemBuilder: (context, index) {
+                  final room = rooms[index];
+                  // Toggle colors for aesthetics
+                  final boxColor = index % 2 == 0 ? const Color(0xFFEA5B7D) : const Color(0xFF9D5BFF);
+                  final icon = index % 2 == 0 ? Icons.phone_callback : Icons.gamepad;
+                  return Container(
+                    width: 160,
+                    margin: const EdgeInsets.only(right: 16),
+                    decoration: BoxDecoration(
+                       color: boxColor,
+                       borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Center(
+                       child: Column(
+                         mainAxisAlignment: MainAxisAlignment.center,
+                         children: [
+                            Icon(icon, size: 40, color: Colors.white),
+                            const SizedBox(height: 12),
+                            Text(
+                              room.title,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              "${room.participants} listening",
+                              style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                            ),
+                         ],
+                       )
+                    ),
+                  );
+                },
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Container(
-                  height: 140,
-                   decoration: BoxDecoration(
-                     color: const Color(0xFF9D5BFF), // Purple
-                     borderRadius: BorderRadius.circular(24),
-                   ),
-                   child: const Center(
-                     child: Icon(Icons.gamepad, size: 40, color: Colors.white),
-                   ),
-                ),
-              ),
-            ],
-          ),
+            );
+          }
         )
 
       ],

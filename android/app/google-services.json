@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "359983887164",
+    "project_id": "bondly-app-dev-2026-677e5",
+    "storage_bucket": "bondly-app-dev-2026-677e5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:359983887164:android:0ec245fc32f2997556e439",
+        "android_client_info": {
+          "package_name": "com.example.bondly"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBeZmFk0Os8fO8VLFTDQYHq2dpA10awM4s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

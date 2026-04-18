@@ -4,12 +4,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'package:flutter/foundation.dart'; // Add this at the top with other imports
+
 class VerificationService {
-  // ⚠️ Change to your real server IP:
-  // Android emulator → 10.0.2.2
-  // iOS simulator    → localhost
-  // Physical device  → your PC's local IP e.g. 192.168.1.5
-  static const String _baseUrl = 'http://10.0.2.2:5000';
+  // ⚠️ Automatically point to standard localhosts:
+  static const String _baseUrl = kIsWeb 
+      ? 'http://localhost:5000' 
+      : 'http://10.0.2.2:5000';
 
   final _storage = const FlutterSecureStorage();
 

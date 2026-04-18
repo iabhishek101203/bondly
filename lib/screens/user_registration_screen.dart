@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:persona_client/persona_client.dart';
+import 'package:persona_flutter/persona_flutter.dart';
 import '../services/verification_service.dart';
 import '../utils/colors.dart';
 import '../widgets/custom_button.dart';
@@ -69,6 +69,26 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
     });
 
     try {
+      // ⚠️ TEMPORARY BYPASS FOR UI TESTING ⚠️
+      // Since you don't have a backend running yet, this will let you skip the 
+      // network and Persona steps, so you can actually see the next screen!
+      bool isTestingUI = true; 
+      
+      if (isTestingUI) {
+        await Future.delayed(const Duration(seconds: 1)); // Simulate loading
+        if (!mounted) return;
+        _showSnack('Identity verified (Mocked)! Welcome aboard! 🎉');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InterestsScreen(
+              userName: _nameController.text.trim(),
+            ),
+          ),
+        );
+        return;
+      }
+      
       // Step 2: Register Speaker on backend → receives & stores JWT
       await _verificationService.registerSpeaker(
         name:     _nameController.text.trim(),
@@ -138,30 +158,40 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
   Future<bool> _launchPersonaSDK(String inquiryId) async {
     final completer = Completer<bool>();
 
-    Persona.start(
-      InquiryTemplate(inquiryId: inquiryId),
-      onSuccess: (inquiryId, fields, relationships) {
-        // Liveness passed ✅ — Persona webhook will fire to our backend
-        debugPrint('[Persona] onSuccess: $inquiryId');
-        if (!completer.isCompleted) completer.complete(true);
-      },
-      onFailed: (inquiryId, fields, relationships) {
-        // Liveness failed ❌ — Persona webhook will fire with "failed" status
-        debugPrint('[Persona] onFailed: $inquiryId');
-        if (!completer.isCompleted) completer.complete(true);
-      },
-      onCanceled: (inquiryId, sessionToken) {
-        // User pressed back without completing
-        debugPrint('[Persona] onCanceled');
-        if (!completer.isCompleted) completer.complete(false);
-      },
-      onError: (String error) {
-        debugPrint('[Persona] onError: $error');
-        if (!completer.isCompleted) {
-          completer.completeError(Exception('Persona SDK error: $error'));
-        }
-      },
+    StreamSubscription<InquiryComplete>? completeSub;
+    StreamSubscription<InquiryCanceled>? canceledSub;
+    StreamSubscription<InquiryError>? errorSub;
+
+    void cleanup() {
+      completeSub?.cancel();
+      canceledSub?.cancel();
+      errorSub?.cancel();
+    }
+
+    completeSub = PersonaInquiry.onComplete.listen((event) {
+      debugPrint('[Persona] onComplete: ${event.inquiryId}');
+      cleanup();
+      if (!completer.isCompleted) completer.complete(true);
+    });
+
+    canceledSub = PersonaInquiry.onCanceled.listen((event) {
+      debugPrint('[Persona] onCanceled');
+      cleanup();
+      if (!completer.isCompleted) completer.complete(false);
+    });
+
+    errorSub = PersonaInquiry.onError.listen((event) {
+      debugPrint('[Persona] onError: ${event.error}');
+      cleanup();
+      if (!completer.isCompleted) {
+        completer.completeError(Exception('Persona SDK error: ${event.error}'));
+      }
+    });
+
+    await PersonaInquiry.init(
+      configuration: InquiryIdConfiguration(inquiryId: inquiryId),
     );
+    PersonaInquiry.start();
 
     return completer.future;
   }
