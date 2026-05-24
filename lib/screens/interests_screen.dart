@@ -1,6 +1,9 @@
+// lib/screens/interests_screen.dart
+
 import 'package:flutter/material.dart';
 import '../utils/colors.dart';
 import '../widgets/custom_button.dart';
+import '../services/firestore_service.dart';
 import 'home_screen.dart';
 
 class InterestsScreen extends StatefulWidget {
@@ -13,26 +16,18 @@ class InterestsScreen extends StatefulWidget {
 }
 
 class _InterestsScreenState extends State<InterestsScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
+
   final List<String> _interests = [
-    "Motivation",
-    "Love & Dating",
-    "Mental Health",
-    "Career",
-    "Relationships",
-    "Fitness",
-    "Spirituality",
-    "Business",
-    "Art & Creativity",
-    "Technology",
-    "Music",
-    "Travel",
-    "Cooking",
-    "Finance",
-    "Fashion"
+    "Motivation", "Love & Dating", "Mental Health", "Career",
+    "Relationships", "Fitness", "Spirituality", "Business",
+    "Art & Creativity", "Technology", "Music", "Travel",
+    "Cooking", "Finance", "Fashion",
   ];
 
   final Set<String> _selectedInterests = {};
   final int _maxSelection = 5;
+  bool _isLoading = false;
 
   void _toggleInterest(String interest) {
     setState(() {
@@ -42,25 +37,52 @@ class _InterestsScreenState extends State<InterestsScreen> {
         if (_selectedInterests.length < _maxSelection) {
           _selectedInterests.add(interest);
         } else {
-           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("You can only select up to 5 interests")),
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('You can only select up to 5 interests'),
+              backgroundColor: Colors.orange,
+            ),
           );
         }
       }
     });
   }
 
+  Future<void> _onStartExploring() async {
+    setState(() => _isLoading = true);
+    try {
+      // Save selected interests to Firestore
+      if (_selectedInterests.isNotEmpty) {
+        await _firestoreService.updateProfile(
+          interests: _selectedInterests.toList(),
+        );
+      }
+    } catch (_) {
+      // Non-critical — continue even if save fails
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background, // Pale red background
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             children: [
               const SizedBox(height: 40),
-              // Sparkle Icon
+
+              // Icon
               Container(
                 width: 60,
                 height: 60,
@@ -79,75 +101,92 @@ class _InterestsScreenState extends State<InterestsScreen> {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.auto_awesome, color: Colors.white, size: 30),
+                child: const Icon(Icons.auto_awesome,
+                    color: Colors.white, size: 30),
               ),
               const SizedBox(height: 24),
-              // Title
+
               const Text(
                 'What interests you?',
                 style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textDark),
               ),
               const SizedBox(height: 12),
-              // Subtitle
               const Text(
                 'Select topics to help us find the perfect\nspeakers for you',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 16,
-                  color: AppColors.textGrey,
-                  height: 1.5,
-                ),
+                    fontSize: 16, color: AppColors.textGrey, height: 1.5),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 24),
+
               // Counter
-              Text(
-                'Selected: ${_selectedInterests.length}/$_maxSelection',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textGrey,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Selected: ${_selectedInterests.length}/$_maxSelection',
+                    style: const TextStyle(
+                        fontSize: 14, color: AppColors.textGrey),
+                  ),
+                  if (_selectedInterests.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    const Icon(Icons.check_circle,
+                        color: AppColors.primaryPink, size: 16),
+                  ],
+                ],
               ),
               const SizedBox(height: 20),
-              
-              // Interests Honeycomb/Grid
+
+              // Interest chips
               Expanded(
                 child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
                   child: Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     alignment: WrapAlignment.center,
                     children: _interests.map((interest) {
-                      final isSelected = _selectedInterests.contains(interest);
+                      final isSelected =
+                          _selectedInterests.contains(interest);
                       return GestureDetector(
                         onTap: () => _toggleInterest(interest),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 12),
                           decoration: BoxDecoration(
-                            color: isSelected ? Colors.white : Colors.white.withOpacity(0.8),
+                            color: isSelected
+                                ? AppColors.primaryPink.withOpacity(0.08)
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(30),
                             border: Border.all(
-                              color: isSelected ? AppColors.primaryPink : Colors.transparent,
+                              color: isSelected
+                                  ? AppColors.primaryPink
+                                  : Colors.grey.shade200,
                               width: 1.5,
                             ),
                             boxShadow: [
                               if (isSelected)
                                 BoxShadow(
-                                  color: AppColors.primaryPink.withOpacity(0.2),
+                                  color:
+                                      AppColors.primaryPink.withOpacity(0.15),
                                   blurRadius: 8,
                                   offset: const Offset(0, 4),
-                                )
+                                ),
                             ],
                           ),
                           child: Text(
                             interest,
                             style: TextStyle(
-                              color: isSelected ? AppColors.primaryPink : AppColors.textDark,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                              color: isSelected
+                                  ? AppColors.primaryPink
+                                  : AppColors.textDark,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
                               fontSize: 14,
                             ),
                           ),
@@ -160,45 +199,28 @@ class _InterestsScreenState extends State<InterestsScreen> {
 
               const SizedBox(height: 20),
 
-              // Start Exploring Button
-              CustomButton(
-                text: _selectedInterests.isEmpty ? "Select at least one interest" : "Start Exploring",
-                // Disable button if no selection? Or change text? 
-                // Screenshot says "Select at least one interest" on the button, which likely means it's disabled or prompts
-                // But the user wants "Start exploring" to go to home.
-                // I'll make it actionable only if at least 1 is selected.
-                onPressed: () {
-                   if (_selectedInterests.isNotEmpty) {
-                     Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => HomeScreen(userName: widget.userName),
-                      ),
-                      (route) => false,
-                    );
-                   }
-                },
-              ),
-              
-              const SizedBox(height: 16),
-              
+              // Start Exploring button
+              _isLoading
+                  ? const CircularProgressIndicator(
+                      color: AppColors.primaryPink)
+                  : CustomButton(
+                      text: _selectedInterests.isEmpty
+                          ? 'Select at least one interest'
+                          : 'Start Exploring 🚀',
+                      onPressed: _selectedInterests.isEmpty
+                          ? null
+                          : _onStartExploring,
+                    ),
+
+              const SizedBox(height: 12),
+
               // Skip
               TextButton(
-                onPressed: () {
-                  Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => HomeScreen(userName: widget.userName),
-                      ),
-                      (route) => false,
-                    );
-                },
+                onPressed: _isLoading ? null : _onStartExploring,
                 child: const Text(
-                  "Skip for now",
-                  style: TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 14,
-                  ),
+                  'Skip for now',
+                  style:
+                      TextStyle(color: AppColors.textGrey, fontSize: 14),
                 ),
               ),
               const SizedBox(height: 20),

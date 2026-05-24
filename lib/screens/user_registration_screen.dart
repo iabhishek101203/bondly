@@ -1,41 +1,50 @@
-import 'dart:async';
+// lib/screens/user_registration_screen.dart
+
 import 'package:flutter/material.dart';
-import 'package:persona_flutter/persona_flutter.dart';
-import '../services/verification_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/firestore_service.dart';
 import '../utils/colors.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 import 'interests_screen.dart';
+import 'home_screen.dart';
 
 class UserRegistrationScreen extends StatefulWidget {
-  const UserRegistrationScreen({super.key});
+  /// 'speaker' or 'listener'
+  final String role;
+
+  const UserRegistrationScreen({super.key, required this.role});
 
   @override
-  State<UserRegistrationScreen> createState() => _UserRegistrationScreenState();
+  State<UserRegistrationScreen> createState() =>
+      _UserRegistrationScreenState();
 }
 
 class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
-  // ── Controllers ───────────────────────────────────────────────────────────
-  final TextEditingController _nameController     = TextEditingController();
-  final TextEditingController _emailController    = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  // ── Controllers ───────────────────────────────────────────────────
+  final _nameController     = TextEditingController();
+  final _emailController    = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmController  = TextEditingController();
 
-  // ── Service & State ───────────────────────────────────────────────────────
-  final VerificationService _verificationService = VerificationService();
-  bool   _isLoading      = false;
-  String _loadingMessage = '';
+  // ── Services ──────────────────────────────────────────────────────
+  final _auth      = FirebaseAuth.instance;
+  final _firestore = FirestoreService();
+
+  bool _isLoading = false;
+  final bool _obscurePassword = true;
+  final bool _obscureConfirm = true;
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmController.dispose();
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Validate form fields
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Validation ────────────────────────────────────────────────────
   String? _validate() {
     if (_nameController.text.trim().isEmpty) {
       return 'Please enter your full name.';
@@ -43,180 +52,408 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
     if (_emailController.text.trim().isEmpty) {
       return 'Please enter your email.';
     }
-    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(_emailController.text.trim())) {
+    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
+        .hasMatch(_emailController.text.trim())) {
       return 'Please enter a valid email address.';
     }
     if (_passwordController.text.length < 6) {
       return 'Password must be at least 6 characters.';
     }
+    if (_passwordController.text != _confirmController.text) {
+      return 'Passwords do not match.';
+    }
     return null;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // MAIN FLOW: Register → Create Inquiry → Persona SDK → Check Status → Navigate
-  // ─────────────────────────────────────────────────────────────────────────
-  Future<void> _onContinuePressed() async {
-    // Step 1: Validate form
+  // ── Sign Up ───────────────────────────────────────────────────────
+  Future<void> _onSignUp() async {
     final error = _validate();
     if (error != null) {
       _showSnack(error, isError: true);
       return;
     }
 
-    setState(() {
-      _isLoading      = true;
-      _loadingMessage = 'Creating your account...';
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // ⚠️ TEMPORARY BYPASS FOR UI TESTING ⚠️
-      // Since you don't have a backend running yet, this will let you skip the 
-      // network and Persona steps, so you can actually see the next screen!
-      bool isTestingUI = true; 
-      
-      if (isTestingUI) {
-        await Future.delayed(const Duration(seconds: 1)); // Simulate loading
-        if (!mounted) return;
-        _showSnack('Identity verified (Mocked)! Welcome aboard! 🎉');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => InterestsScreen(
-              userName: _nameController.text.trim(),
-            ),
-          ),
-        );
-        return;
-      }
-      
-      // Step 2: Register Speaker on backend → receives & stores JWT
-      await _verificationService.registerSpeaker(
-        name:     _nameController.text.trim(),
-        email:    _emailController.text.trim(),
+      // 1. Create Firebase Auth user
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
-      // Step 3: Call backend to create a Persona inquiry session
-      setState(() => _loadingMessage = 'Setting up identity verification...');
-      final inquiryId = await _verificationService.createInquiry();
+      // 2. Update display name in Auth
+      await credential.user
+          ?.updateDisplayName(_nameController.text.trim());
 
-      // Step 4: Launch Persona camera SDK with the inquiry ID
-      setState(() => _loadingMessage = 'Preparing liveness check...');
-      final sdkCompleted = await _launchPersonaSDK(inquiryId);
-
-      // If user cancelled the SDK → stop here, let them retry
-      if (!sdkCompleted) {
-        _showSnack(
-          'Verification cancelled. Please complete it to continue.',
-          isError: true,
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      // Step 5: Wait for Persona webhook to update our DB, then poll status
-      setState(() => _loadingMessage = 'Confirming your verification...');
-      await Future.delayed(const Duration(seconds: 2));
-      final status = await _verificationService.getVerificationStatus();
+      // 3. Create Firestore user document (50 welcome tokens included)
+      await _firestore.createOrUpdateUser(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+      );
 
       if (!mounted) return;
 
-      // Step 6: Navigate based on verification result
-      if (status['verified'] == true) {
-        _showSnack('Identity verified! Welcome aboard! 🎉');
-        await Future.delayed(const Duration(milliseconds: 800));
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => InterestsScreen(
-              userName: _nameController.text.trim(),
-            ),
+      // 4. Navigate to interests screen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => InterestsScreen(
+            userName: _nameController.text.trim(),
           ),
-        );
-      } else {
-        final currentStatus = status['status'] as String? ?? 'unknown';
-        _showSnack(
-          'Verification $currentStatus. Please try again.',
-          isError: true,
-        );
-      }
-    } on Exception catch (e) {
-      _showSnack(
-        e.toString().replaceAll('Exception: ', ''),
-        isError: true,
+        ),
       );
+    } on FirebaseAuthException catch (e) {
+      _showSnack(_friendlyAuthError(e.code), isError: true);
+    } catch (e) {
+      _showSnack('Something went wrong. Please try again.', isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Launch Persona SDK
-  // Returns: true  → SDK ran (completed or failed — webhook handles result)
-  //          false → user cancelled
-  // ─────────────────────────────────────────────────────────────────────────
-  Future<bool> _launchPersonaSDK(String inquiryId) async {
-    final completer = Completer<bool>();
-
-    StreamSubscription<InquiryComplete>? completeSub;
-    StreamSubscription<InquiryCanceled>? canceledSub;
-    StreamSubscription<InquiryError>? errorSub;
-
-    void cleanup() {
-      completeSub?.cancel();
-      canceledSub?.cancel();
-      errorSub?.cancel();
+  // ── Friendly error messages ───────────────────────────────────────
+  String _friendlyAuthError(String code) {
+    switch (code) {
+      case 'email-already-in-use':
+        return 'This email is already registered. Try signing in instead.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'weak-password':
+        return 'Password is too weak. Use at least 6 characters.';
+      case 'network-request-failed':
+        return 'No internet connection. Please check your network.';
+      default:
+        return 'Registration failed. Please try again.';
     }
-
-    completeSub = PersonaInquiry.onComplete.listen((event) {
-      debugPrint('[Persona] onComplete: ${event.inquiryId}');
-      cleanup();
-      if (!completer.isCompleted) completer.complete(true);
-    });
-
-    canceledSub = PersonaInquiry.onCanceled.listen((event) {
-      debugPrint('[Persona] onCanceled');
-      cleanup();
-      if (!completer.isCompleted) completer.complete(false);
-    });
-
-    errorSub = PersonaInquiry.onError.listen((event) {
-      debugPrint('[Persona] onError: ${event.error}');
-      cleanup();
-      if (!completer.isCompleted) {
-        completer.completeError(Exception('Persona SDK error: ${event.error}'));
-      }
-    });
-
-    await PersonaInquiry.init(
-      configuration: InquiryIdConfiguration(inquiryId: inquiryId),
-    );
-    PersonaInquiry.start();
-
-    return completer.future;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Styled SnackBar helper
-  // ─────────────────────────────────────────────────────────────────────────
   void _showSnack(String message, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+        backgroundColor:
+            isError ? Colors.red.shade700 : Colors.green.shade700,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+            borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // UI
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── UI ────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final isSpeaker = widget.role == 'speaker';
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+
+                  // ── Back ─────────────────────────────────────────
+                  GestureDetector(
+                    onTap:
+                        _isLoading ? null : () => Navigator.pop(context),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.arrow_back,
+                            size: 20, color: AppColors.textGrey),
+                        SizedBox(width: 4),
+                        Text('Back',
+                            style: TextStyle(
+                                fontSize: 16,
+                                color: AppColors.textGrey)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // ── Header ────────────────────────────────────────
+                  Text(
+                    isSpeaker ? 'Join as Speaker' : 'Create Account',
+                    style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textDark),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isSpeaker
+                        ? 'Share your knowledge and earn tokens'
+                        : 'Connect with amazing people',
+                    style: const TextStyle(
+                        fontSize: 14, color: AppColors.textGrey),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ── Role Badge ────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryPink.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color:
+                              AppColors.primaryPink.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isSpeaker
+                              ? Icons.phone_in_talk_outlined
+                              : Icons.favorite,
+                          color: AppColors.primaryPink,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isSpeaker ? 'Speaker' : 'Listener',
+                          style: const TextStyle(
+                              color: AppColors.primaryPink,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // ── Form Fields ───────────────────────────────────
+                  CustomTextField(
+                    label: 'Full Name',
+                    hint: 'Enter your name',
+                    controller: _nameController,
+                  ),
+                  const SizedBox(height: 16),
+
+                  CustomTextField(
+                    label: 'Email',
+                    hint: 'your@email.com',
+                    controller: _emailController,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Password field
+                  CustomTextField(
+                    label: 'Password',
+                    hint: 'Create a password (min 6 characters)',
+                    isPassword: _obscurePassword,
+                    controller: _passwordController,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Confirm password field
+                  CustomTextField(
+                    label: 'Confirm Password',
+                    hint: 'Re-enter your password',
+                    isPassword: _obscureConfirm,
+                    controller: _confirmController,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ── Sign Up Button ────────────────────────────────
+                  CustomButton(
+                    text: 'Create Account',
+                    onPressed: _isLoading ? null : _onSignUp,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Sign In Link ──────────────────────────────────
+                  Center(
+                    child: GestureDetector(
+                      onTap: _isLoading
+                          ? null
+                          : () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const SignInScreen()),
+                              ),
+                      child: RichText(
+                        text: const TextSpan(
+                          text: 'Already have an account? ',
+                          style: TextStyle(
+                              color: AppColors.textGrey,
+                              fontSize: 14),
+                          children: [
+                            TextSpan(
+                              text: 'Sign In',
+                              style: TextStyle(
+                                color: AppColors.primaryPink,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                ],
+              ),
+            ),
+
+            // ── Loading Overlay ───────────────────────────────────
+            if (_isLoading)
+              Container(
+                color: Colors.black.withValues(alpha: 0.55),
+                child: Center(
+                  child: Container(
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 40),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 28),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                            color: AppColors.primaryPink,
+                            strokeWidth: 3),
+                        SizedBox(height: 20),
+                        Text(
+                          'Creating your account…',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: AppColors.textDark,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SIGN IN SCREEN
+// ══════════════════════════════════════════════════════════════════════════════
+
+class SignInScreen extends StatefulWidget {
+  const SignInScreen({super.key});
+
+  @override
+  State<SignInScreen> createState() => _SignInScreenState();
+}
+
+class _SignInScreenState extends State<SignInScreen> {
+  final _emailController    = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _auth               = FirebaseAuth.instance;
+  final _firestore          = FirestoreService();
+
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onSignIn() async {
+    if (_emailController.text.trim().isEmpty ||
+        _passwordController.text.isEmpty) {
+      _showSnack('Please enter your email and password.', isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      // Mark user online
+      await _firestore.setOnlineStatus(true);
+
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      _showSnack(_friendlyError(e.code), isError: true);
+    } catch (e) {
+      _showSnack('Something went wrong. Please try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _onForgotPassword() async {
+    if (_emailController.text.trim().isEmpty) {
+      _showSnack('Enter your email above first.', isError: true);
+      return;
+    }
+    try {
+      await _auth.sendPasswordResetEmail(
+          email: _emailController.text.trim());
+      _showSnack('Password reset email sent! Check your inbox.');
+    } on FirebaseAuthException catch (e) {
+      _showSnack(_friendlyError(e.code), isError: true);
+    }
+  }
+
+  String _friendlyError(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No account found with this email.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-disabled':
+        return 'This account has been disabled.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      case 'network-request-failed':
+        return 'No internet connection.';
+      default:
+        return 'Sign in failed. Please try again.';
+    }
+  }
+
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            isError ? Colors.red.shade700 : Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -225,176 +462,169 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-
-            // ── Main scrollable form ────────────────────────────────────────
             SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
 
-                    // Back button (disabled during loading)
-                    GestureDetector(
-                      onTap: _isLoading ? null : () => Navigator.pop(context),
-                      child: Row(
-                        children: const [
-                          Icon(Icons.arrow_back, size: 20, color: AppColors.textGrey),
-                          SizedBox(width: 4),
-                          Text(
-                            'Back',
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.arrow_back,
+                            size: 20, color: AppColors.textGrey),
+                        SizedBox(width: 4),
+                        Text('Back',
                             style: TextStyle(
-                              fontSize: 16,
-                              color: AppColors.textGrey,
-                            ),
-                          ),
-                        ],
-                      ),
+                                fontSize: 16,
+                                color: AppColors.textGrey)),
+                      ],
                     ),
-                    const SizedBox(height: 30),
+                  ),
+                  const SizedBox(height: 40),
 
-                    // Header
-                    const Text(
-                      'Create Account',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Choose your role to get started',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textGrey,
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-
-                    // Form fields
-                    CustomTextField(
-                      label: 'Full Name',
-                      hint: 'Enter your name',
-                      controller: _nameController,
-                    ),
-                    const SizedBox(height: 20),
-                    CustomTextField(
-                      label: 'Email',
-                      hint: 'your@email.com',
-                      controller: _emailController,
-                    ),
-                    const SizedBox(height: 20),
-                    CustomTextField(
-                      label: 'Password',
-                      hint: 'Create a password',
-                      isPassword: true,
-                      controller: _passwordController,
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Change role link (disabled during loading)
-                    GestureDetector(
-                      onTap: _isLoading ? null : () => Navigator.pop(context),
-                      child: const Text(
-                        'Change role',
-                        style: TextStyle(
-                          color: AppColors.primaryPink,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    // ── Speaker Liveness Notice ───────────────────────────
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
+                  // Logo
+                  Center(
+                    child: Container(
+                      width: 72,
+                      height: 72,
                       decoration: BoxDecoration(
-                        color: AppColors.primaryPink.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.primaryPink.withOpacity(0.3),
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFE94057), Color(0xFFF27121)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                      ),
-                      child: const Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.verified_user_outlined,
-                            color: AppColors.primaryPink,
-                            size: 20,
-                          ),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              "As a Speaker, you'll need to complete a quick "
-                              "face verification after signing up. "
-                              "It only takes 30 seconds.",
-                              style: TextStyle(
-                                color: AppColors.primaryPink,
-                                fontSize: 13,
-                                height: 1.4,
-                              ),
-                            ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryPink.withValues(alpha: 0.3),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
                           ),
                         ],
                       ),
+                      child: const Icon(Icons.favorite,
+                          size: 36, color: Colors.white),
                     ),
-                    const SizedBox(height: 24),
+                  ),
+                  const SizedBox(height: 24),
 
-                    // ── Continue Button ───────────────────────────────────
-                    CustomButton(
-                      text: 'Continue & Verify Identity',
-                      onPressed: _isLoading ? null : _onContinuePressed,
+                  const Center(
+                    child: Text(
+                      'Welcome back!',
+                      style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textDark),
                     ),
-                    const SizedBox(height: 30),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Center(
+                    child: Text(
+                      'Sign in to continue to Bondly',
+                      style: TextStyle(
+                          fontSize: 14, color: AppColors.textGrey),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  CustomTextField(
+                    label: 'Email',
+                    hint: 'your@email.com',
+                    controller: _emailController,
+                  ),
+                  const SizedBox(height: 16),
+
+                  CustomTextField(
+                    label: 'Password',
+                    hint: 'Your password',
+                    isPassword: true,
+                    controller: _passwordController,
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Forgot password
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      onTap: _onForgotPassword,
+                      child: const Text(
+                        'Forgot Password?',
+                        style: TextStyle(
+                            color: AppColors.primaryPink,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  CustomButton(
+                    text: 'Sign In',
+                    onPressed: _isLoading ? null : _onSignIn,
+                  ),
+                  const SizedBox(height: 20),
+
+                  Center(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: RichText(
+                        text: const TextSpan(
+                          text: "Don't have an account? ",
+                          style: TextStyle(
+                              color: AppColors.textGrey, fontSize: 14),
+                          children: [
+                            TextSpan(
+                              text: 'Sign Up',
+                              style: TextStyle(
+                                  color: AppColors.primaryPink,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                ],
               ),
             ),
 
-            // ── Full-screen Loading Overlay ─────────────────────────────────
             if (_isLoading)
               Container(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.55),
                 child: Center(
                   child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 40),
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 40),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 28,
-                    ),
+                        horizontal: 24, vertical: 28),
                     decoration: BoxDecoration(
                       color: AppColors.background,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Column(
+                    child: const Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const CircularProgressIndicator(
-                          color: AppColors.primaryPink,
-                          strokeWidth: 3,
-                        ),
-                        const SizedBox(height: 20),
+                        CircularProgressIndicator(
+                            color: AppColors.primaryPink,
+                            strokeWidth: 3),
+                        SizedBox(height: 20),
                         Text(
-                          _loadingMessage,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: AppColors.textDark,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          'Signing you in…',
+                          style: TextStyle(
+                              color: AppColors.textDark,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-
-          ], // Stack children
+          ],
         ),
       ),
     );

@@ -1,106 +1,182 @@
+// lib/screens/recents_screen.dart
+
 import 'package:flutter/material.dart';
 import '../utils/colors.dart';
 import '../utils/avatar_utils.dart';
+import '../models/user_model.dart';
+import '../models/call_model.dart';
+import '../services/firestore_service.dart';
 
-class RecentsScreen extends StatelessWidget {
-  const RecentsScreen({super.key});
+class RecentsScreen extends StatefulWidget {
+  final UserModel? currentUser;
+
+  const RecentsScreen({super.key, this.currentUser});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                // Header
-                const Text(
-                  'Recent Calls',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Your call history and favorites',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textGrey,
-                  ),
-                ),
-                const SizedBox(height: 24),
+  State<RecentsScreen> createState() => _RecentsScreenState();
+}
 
-                // Recent List
-                _buildRecentCard(
-                  name: "Sarah Johnson",
-                  time: "1h ago",
-                  duration: "15 mins",
-                  isFavorite: true,
-                  isVideo: true,
-                  isMissed: false,
-                ),
-                _buildRecentCard(
-                  name: "Michael Chen",
-                  time: "3h ago",
-                  duration: "8 mins",
-                  isFavorite: false,
-                  isVideo: false,
-                  isMissed: false,
-                ),
-                 _buildRecentCard(
-                  name: "Emma Davis",
-                  time: "Yesterday",
-                  duration: "22 mins",
-                  isFavorite: true,
-                  isVideo: true,
-                  isMissed: false,
-                ),
-                _buildRecentCard(
-                  name: "Alex Rivera",
-                  time: "2d ago",
-                  duration: "Missed",
-                  isFavorite: false,
-                  isVideo: false, // Icon shows phone for missed in screenshot example (or generic)
-                  isMissed: true,
-                ),
+class _RecentsScreenState extends State<RecentsScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
 
-                const SizedBox(height: 30),
-
-                // Stats Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    _StatItem(count: "4", label: "Total Calls"),
-                    _StatItem(count: "2", label: "Favorites"),
-                    _StatItem(count: "45", label: "Total Mins"),
-                  ],
-                ),
-                
-                const SizedBox(height: 40),
-              ],
+  void _callBack(CallModel call, {required bool isVideo}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: const EdgeInsets.all(28),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 42,
+              backgroundImage:
+                  NetworkImage(AvatarUtils.getAvatarUrl(call.otherUserName)),
             ),
-          ),
+            const SizedBox(height: 16),
+            Text(
+              'Calling ${call.otherUserName}…',
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textDark),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isVideo ? '📹 Video Call' : '📞 Audio Call',
+              style: const TextStyle(color: AppColors.textGrey, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            const CircularProgressIndicator(color: AppColors.primaryPink),
+            const SizedBox(height: 24),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.redAccent),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+              ),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Colors.redAccent)),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildRecentCard({
-    required String name,
-    required String time,
-    required String duration,
-    required bool isFavorite,
-    required bool isVideo,
-    required bool isMissed,
-  }) {
+  @override
+  Widget build(BuildContext context) {
+    final totalCalls = widget.currentUser?.totalCalls ?? 0;
+    final totalMins = widget.currentUser?.totalMinutes ?? 0;
+    final favCount = widget.currentUser?.favoriteUids.length ?? 0;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header ───────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Recent Calls',
+                    style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textDark),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Your call history and favorites',
+                    style: TextStyle(fontSize: 14, color: AppColors.textGrey),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Stats Row ─────────────────────────────────
+                  Row(
+                    children: [
+                      Expanded(
+                          child: _StatCard(
+                              count: '$totalCalls', label: 'Total Calls')),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child:
+                              _StatCard(count: '$favCount', label: 'Favorites')),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child:
+                              _StatCard(count: '$totalMins', label: 'Total Mins')),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+
+            // ── Call History List ─────────────────────────────────
+            Expanded(
+              child: StreamBuilder<List<CallModel>>(
+                stream: _firestoreService.getCallHistory(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                        child: CircularProgressIndicator(
+                            color: AppColors.primaryPink));
+                  }
+
+                  final calls = snapshot.data ?? [];
+
+                  if (calls.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.call_outlined,
+                              size: 64, color: Colors.grey.shade300),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'No calls yet.',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textGrey),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Start connecting with people!',
+                            style: TextStyle(
+                                fontSize: 13, color: AppColors.textGrey),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    itemCount: calls.length,
+                    itemBuilder: (context, index) {
+                      return _buildRecentCard(calls[index]);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentCard(CallModel call) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -115,75 +191,77 @@ class RecentsScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Avatar with call type indicator
           Stack(
             children: [
-               CircleAvatar(
+              CircleAvatar(
                 radius: 28,
                 backgroundColor: AppColors.background,
-                backgroundImage: NetworkImage(AvatarUtils.getAvatarUrl(name)),
+                backgroundImage: NetworkImage(
+                    AvatarUtils.getAvatarUrl(call.otherUserName)),
               ),
-              if (isVideo) // Just using video flag to show an indicator style if needed, 
-                          // but screenshot shows small icon on avatar sometimes? 
-                          // Actually screenshot has icon ON avatar for some. 
-                          // Let's stick to the simpler avatar + status indicator.
               Positioned(
-                 bottom: 0,
-                 right: 0,
-                 child: Container(
-                   padding: const EdgeInsets.all(4),
-                   decoration: BoxDecoration(
-                     color: AppColors.primaryPink,
-                     shape: BoxShape.circle,
-                     border: Border.all(color: Colors.white, width: 2),
-                   ),
-                   child: Icon(
-                     isVideo ? Icons.videocam : Icons.phone,
-                     color: Colors.white,
-                     size: 10,
-                   ),
-                 ),
-               )
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: call.isMissed
+                        ? Colors.redAccent
+                        : AppColors.primaryPink,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  child: Icon(
+                    call.isMissed
+                        ? Icons.call_missed
+                        : call.isVideo
+                            ? Icons.videocam
+                            : Icons.phone,
+                    color: Colors.white,
+                    size: 10,
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
+
+          // Name + time
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
-                      ),
-                    ),
-                    if (isFavorite) ...[
-                      const SizedBox(width: 6),
-                      const Icon(Icons.favorite, color: AppColors.primaryPink, size: 14),
-                    ]
-                  ],
+                Text(
+                  call.otherUserName,
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textDark),
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.access_time, size: 12, color: AppColors.textGrey),
+                    const Icon(Icons.access_time,
+                        size: 12, color: AppColors.textGrey),
                     const SizedBox(width: 4),
-                    Text(
-                      time,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textGrey),
-                    ),
+                    Text(call.timeAgo,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textGrey)),
                     const SizedBox(width: 8),
-                    const Text("•", style: TextStyle(fontSize: 12, color: AppColors.textGrey)),
+                    const Text('•',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textGrey)),
                     const SizedBox(width: 8),
                     Text(
-                      duration,
+                      call.durationLabel,
                       style: TextStyle(
-                        fontSize: 12, 
-                        color: isMissed ? Colors.redAccent : AppColors.textGrey,
-                        fontWeight: isMissed ? FontWeight.w600 : FontWeight.normal,
+                        fontSize: 12,
+                        color:
+                            call.isMissed ? Colors.redAccent : AppColors.textGrey,
+                        fontWeight: call.isMissed
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -191,69 +269,61 @@ class RecentsScreen extends StatelessWidget {
               ],
             ),
           ),
-          // Actions
-          Row(
-            children: [
-               Icon(
-                 isFavorite ? Icons.favorite : Icons.favorite_border,
-                 color: isFavorite ? AppColors.primaryPink.withOpacity(0.5) : Colors.grey.shade300, 
-                 // Screenshot shows light pink heart background sometimes? 
-                 // It shows a separate button actually.
-                 size: 20,
-               ),
-               const SizedBox(width: 12),
-               Container(
-                 padding: const EdgeInsets.all(10),
-                 decoration: BoxDecoration(
-                   color: isVideo ? AppColors.primaryPink : AppColors.primaryPink.withOpacity(0.1),
-                   shape: BoxShape.circle,
-                 ),
-                 child: Icon(
-                   isVideo ? Icons.videocam : Icons.phone,
-                   color: isVideo ? Colors.white : AppColors.primaryPink,
-                   size: 20,
-                 ),
-               )
-            ],
-          )
+
+          // Call back button
+          GestureDetector(
+            onTap: () => _callBack(call, isVideo: call.isVideo),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: call.isVideo
+                    ? AppColors.primaryPink
+                    : AppColors.primaryPink.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                call.isVideo ? Icons.videocam : Icons.phone,
+                color: call.isVideo ? Colors.white : AppColors.primaryPink,
+                size: 20,
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _StatItem extends StatelessWidget {
+// ── Stat Card ─────────────────────────────────────────────────────────
+
+class _StatCard extends StatelessWidget {
   final String count;
   final String label;
 
-  const _StatItem({required this.count, required this.label});
+  const _StatCard({required this.count, required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 100,
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.pink.shade50.withOpacity(0.3), // Very light pink
-        borderRadius: BorderRadius.circular(24),
+        color: Colors.pink.shade50.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
           Text(
             count,
             style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primaryPink,
-            ),
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryPink),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textGrey,
-            ),
+            style:
+                const TextStyle(fontSize: 11, color: AppColors.textGrey),
           ),
         ],
       ),
