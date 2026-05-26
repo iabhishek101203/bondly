@@ -14,88 +14,47 @@ class CreateAccountScreen extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 10),
-
-                // ── Back Button ───────────────────────────────────
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.arrow_back,
-                          size: 20, color: AppColors.textGrey),
-                      SizedBox(width: 4),
-                      Text(
-                        'Back',
-                        style: TextStyle(
-                            fontSize: 16, color: AppColors.textGrey),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 30),
-
-                // ── Header ────────────────────────────────────────
-                const Text(
-                  'Create Account',
-                  style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Choose your role to get started',
-                  style:
-                      TextStyle(fontSize: 14, color: AppColors.textGrey),
-                ),
-                const SizedBox(height: 40),
-
-                // ── Role Cards ────────────────────────────────────
-                RoleSelectionCard(
-                  icon: Icons.phone_in_talk_outlined,
-                  title: "I'm a Speaker",
-                  description:
-                      'Share your time and earn tokens by connecting with others',
-                  iconGradient: const [Color(0xFFE94057), Color(0xFFF27121)],
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const UserRegistrationScreen(
-                            role: 'speaker'),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                RoleSelectionCard(
-                  icon: Icons.favorite,
-                  title: "I'm Looking to Connect",
-                  description:
-                      'Discover and connect with amazing speakers',
-                  iconGradient: const [
-                    Color(0xFFD96FF8),
-                    Color(0xFFE94057)
-                  ],
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const UserRegistrationScreen(
-                            role: 'listener'),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Row(children: [
+                  Icon(Icons.arrow_back, size: 20, color: AppColors.textGrey),
+                  SizedBox(width: 4),
+                  Text('Back', style: TextStyle(fontSize: 16, color: AppColors.textGrey)),
+                ]),
+              ),
+              const SizedBox(height: 30),
+              const Text('Create Account',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+              const SizedBox(height: 8),
+              const Text('Choose your role to get started',
+                  style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
+              const SizedBox(height: 40),
+              RoleSelectionCard(
+                icon: Icons.phone_in_talk_outlined,
+                title: "I'm a Speaker 🎙️",
+                description: 'Go live, connect with people & earn tokens by sharing your time',
+                iconGradient: const [Color(0xFF7E57C2), Color(0xFFE94057)],
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const UserRegistrationScreen(role: 'speaker'),
+                )),
+              ),
+              const SizedBox(height: 20),
+              RoleSelectionCard(
+                icon: Icons.headphones_outlined,
+                title: "I'm a Listener 🎧",
+                description: 'Discover live speakers, send gifts & enjoy one-on-one conversations',
+                iconGradient: const [Color(0xFFE94057), Color(0xFFF27121)],
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const UserRegistrationScreen(role: 'listener'),
+                )),
+              ),
+              const SizedBox(height: 20),
+            ],
           ),
         ),
       ),

@@ -1,7 +1,6 @@
 name: bondly
-description: "A new Flutter project."
+description: "Bondly - Real connections through voice and video"
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -10,20 +9,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
   # Firebase
   firebase_core: ^4.7.0
   firebase_auth: ^6.4.0
   cloud_firestore: ^6.3.0
-
   # Calling
   agora_rtc_engine: ^6.3.2
   permission_handler: ^11.3.1
-
   # Storage & Networking
   flutter_secure_storage: ^9.2.2
   http: ^1.2.2
-
   # UI
   cupertino_icons: ^1.0.8
 

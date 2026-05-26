@@ -11,15 +11,8 @@ class CallModel {
   final bool isMissed;
   final DateTime? timestamp;
 
-  CallModel({
-    required this.id,
-    required this.otherUserUid,
-    required this.otherUserName,
-    required this.isVideo,
-    required this.durationSeconds,
-    required this.isMissed,
-    this.timestamp,
-  });
+  CallModel({required this.id, required this.otherUserUid, required this.otherUserName,
+      required this.isVideo, required this.durationSeconds, required this.isMissed, this.timestamp});
 
   factory CallModel.fromMap(Map<String, dynamic> map, String id) {
     return CallModel(
@@ -33,15 +26,12 @@ class CallModel {
     );
   }
 
-  /// Human-readable duration string.
   String get durationLabel {
     if (isMissed) return 'Missed';
     if (durationSeconds < 60) return '${durationSeconds}s';
-    final mins = durationSeconds ~/ 60;
-    return '$mins min${mins == 1 ? '' : 's'}';
+    return '${durationSeconds ~/ 60} min${durationSeconds ~/ 60 == 1 ? '' : 's'}';
   }
 
-  /// Human-readable relative time.
   String get timeAgo {
     if (timestamp == null) return '';
     final diff = DateTime.now().difference(timestamp!);

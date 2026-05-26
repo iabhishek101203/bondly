@@ -9,13 +9,7 @@ class MessageModel {
   final DateTime? timestamp;
   final bool seen;
 
-  MessageModel({
-    required this.id,
-    required this.text,
-    required this.senderId,
-    this.timestamp,
-    this.seen = false,
-  });
+  MessageModel({required this.id, required this.text, required this.senderId, this.timestamp, this.seen = false});
 
   factory MessageModel.fromMap(Map<String, dynamic> map, String id) {
     return MessageModel(
@@ -27,7 +21,6 @@ class MessageModel {
     );
   }
 
-  /// Human-readable time label (e.g. "3:45 PM")
   String get timeLabel {
     if (timestamp == null) return '';
     final h = timestamp!.hour;
